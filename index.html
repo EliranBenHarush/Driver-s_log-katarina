@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מערכת הספקות לנהגים</title>
+
+<!-- Firebase SDKs (compat v10) -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+  background: #eef2f7;
+  color: #1a1a2e;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.app { display: flex; height: 100vh; }
+
+/* ======= SIDEBAR ======= */
+.sidebar {
+  width: 240px;
+  background: linear-gradient(175deg, #1a237e 0%, #1565c0 100%);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  box-shadow: 3px 0 15px rgba(0,0,0,0.25);
+  z-index: 10;
+}
+
+.sidebar-logo {
+  padding: 22px 20px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+  text-align: center;
+}
+.sidebar-logo h1 { font-size: 17px; font-weight: 800; }
+.sidebar-logo p  { font-size: 11px; opacity: 0.45; margin-top: 3px; }
+
+/* Firebase status bar */
+.fb-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: rgba(0,0,0,0.18);
+  font-size: 11px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.fb-status-bar:hover { background: rgba(0,0,0,0.3); }
+
+.fb-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #78909c;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.fb-dot.connected  { background: #66bb6a; box-shadow: 0 0 6px #66bb6a; }
+.fb-dot.connecting { background: #ffa726; }
+.fb-dot.error      { background: #ef5350; }
+
+.fb-status-text { flex: 1; opacity: 0.7; }
+.fb-settings-icon { opacity: 0.5; font-size: 12px; }
+
+/* Add driver */
+.sidebar-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.sidebar-section .lbl {
+  font-size: 10px; text-transform: uppercase;
+  letter-spacing: 1.2px; opacity: 0.4; margin-bottom: 8px;
+}
+.add-row { display: flex; gap: 7px; }
+.add-row input {
+  flex: 1; padding: 9px 11px;
+  border: 1.5px solid rgba(255,255,255,0.22);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.09);
+  color: white; font-size: 13px;
+  text-align: right; font-family: inherit;
+}
+.add-row input::placeholder { color: rgba(255,255,255,0.3); }
+.add-row input:focus {
+  outline: none;
+  border-color: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.15);
+}
+.add-row .add-btn {
+  width: 36px; height: 36px; border: none; border-radius: 8px;
+  background: #43a047; color: white;
+  font-size: 22px; font-weight: 300;
+  cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  flex-shrink: 0; line-height: 1;
+}
+.add-row .add-btn:hover { background: #388e3c; }
+
+/* Driver list */
+.drivers-wrap {
+  flex: 1; overflow-y: auto; padding: 12px;
+}
+.drivers-wrap .lbl {
+  font-size: 10px; text-transform: uppercase;
+  letter-spacing: 1.2px; opacity: 0.4; margin-bottom: 8px; padding: 0 4px;
+}
+.driver-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; border-radius: 10px;
+  cursor: pointer; border: 1px solid transparent;
+  margin-bottom: 4px; transition: all 0.15s;
+}
+.driver-item:hover { background: rgba(255,255,255,0.1); }
+.driver-item.active {
+  background: rgba(100,181,246,0.2);
+  border-color: rgba(100,181,246,0.4);
+}
+.driver-item .ico { font-size: 15px; opacity: 0.7; }
+.driver-name { flex: 1; font-size: 14px; font-weight: 500; }
+.driver-item.active .driver-name { color: #90caf9; font-weight: 700; }
+.del-drv {
+  background: none; border: none;
+  color: rgba(255,255,255,0.22); cursor: pointer;
+  font-size: 13px; padding: 4px 5px; border-radius: 5px;
+  transition: all 0.15s;
+}
+.del-drv:hover { color: #ef5350; background: rgba(239,83,80,0.15); }
+.no-drivers { text-align: center; font-size: 12px; color: rgba(255,255,255,0.22); padding: 16px 8px; }
+
+/* ======= MAIN ======= */
+.main {
+  flex: 1; display: flex; flex-direction: column;
+  overflow: hidden; padding: 16px; gap: 12px;
+}
+.empty-state {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px; color: #bbb;
+}
+.empty-state .big-ico { font-size: 70px; }
+.empty-state .msg     { font-size: 17px; }
+.empty-state .hint    { font-size: 13px; color: #ccc; }
+
+#driver-view {
+  flex: 1; display: flex; flex-direction: column; gap: 12px; overflow: hidden;
+}
+.hidden { display: none !important; }
+
+/* ======= TOOLBAR ======= */
+.toolbar {
+  display: flex; align-items: center; gap: 10px;
+  background: white; border-radius: 12px;
+  padding: 10px 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  flex-shrink: 0;
+}
+.week-lbl {
+  flex: 1; text-align: center; font-size: 15px;
+  font-weight: 700; color: #1a237e;
+}
+.drv-badge {
+  background: #e8eaf6; color: #3949ab;
+  font-size: 13px; font-weight: 700;
+  padding: 4px 12px; border-radius: 20px;
+}
+.btn {
+  padding: 8px 15px; border: none; border-radius: 8px;
+  cursor: pointer; font-size: 13px; font-weight: 600;
+  transition: all 0.15s; font-family: inherit; white-space: nowrap;
+}
+.btn-nav  { background: #f0f2f8; color: #555; }
+.btn-nav:hover { background: #e0e4f0; }
+.btn-add  { background: #e53935; color: white; border-radius: 20px; padding: 8px 18px; }
+.btn-add:hover { background: #c62828; }
+.btn-print{ background: #546e7a; color: white; }
+.btn-print:hover { background: #37474f; }
+
+/* ======= POOL ======= */
+.pool-section {
+  background: white; border-radius: 12px;
+  padding: 10px 14px 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.07); flex-shrink: 0;
+}
+.pool-header { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+.pool-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #999; }
+.pool-badge {
+  background: #ff7043; color: white;
+  font-size: 10px; font-weight: 700;
+  padding: 1px 7px; border-radius: 10px; display: none;
+}
+.pool-zone {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  min-height: 58px; padding: 7px;
+  background: #f7f8fb; border-radius: 9px;
+  border: 2px dashed #dde0ec; transition: all 0.2s;
+  align-content: flex-start;
+}
+.pool-zone.drag-over { border-color: #3949ab; background: #e8eaf6; }
+.pool-hint {
+  color: #ccc; font-size: 12px; width: 100%;
+  text-align: center; align-self: center; pointer-events: none;
+}
+
+/* ======= GRID ======= */
+.grid {
+  display: grid; grid-template-columns: repeat(6, 1fr);
+  gap: 10px; flex: 1; overflow: hidden; min-height: 0;
+}
+.day-col {
+  background: white; border-radius: 12px; display: flex;
+  flex-direction: column; box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+  overflow: hidden; min-height: 0;
+}
+.day-col.today { box-shadow: 0 2px 10px rgba(0,0,0,0.07), 0 0 0 2px #1a237e; }
+
+.day-head {
+  padding: 9px 8px 7px; text-align: center;
+  border-bottom: 2px solid #f0f2f7; flex-shrink: 0;
+}
+.day-col.today .day-head { background: #f3f4fb; }
+.day-nm { font-size: 13px; font-weight: 800; color: #1a237e; }
+.day-col.today .day-nm { color: #e53935; }
+.day-dt { font-size: 11px; color: #aaa; margin-top: 2px; }
+.day-cnt {
+  display: inline-block; margin-top: 4px;
+  background: #eef0fa; border-radius: 10px;
+  padding: 1px 9px; font-size: 10px; color: #666; font-weight: 600;
+}
+.day-total { display: block; font-size: 10px; color: #d32f2f; font-weight: 700; margin-top: 3px; }
+
+.drop-zone {
+  flex: 1; padding: 6px; display: flex;
+  flex-direction: column; gap: 5px;
+  overflow-y: auto; transition: background 0.18s; min-height: 60px;
+}
+.drop-zone.drag-over { background: #e8eaf6; }
+
+/* ======= CUSTOMER CARD ======= */
+.ccard {
+  background: white;
+  border: 1px solid #ffe0b2;
+  border-right: 4px solid #ff9800;
+  border-radius: 9px;
+  padding: 8px 10px 6px 10px;
+  cursor: grab;
+  box-shadow: 0 1px 5px rgba(255,152,0,0.12);
+  position: relative;
+  transition: box-shadow 0.15s, transform 0.12s;
+  user-select: none;
+  flex-shrink: 0;
+  background: #fffdf5;
+}
+.ccard:hover { box-shadow: 0 5px 18px rgba(0,0,0,0.13); transform: translateY(-2px); }
+.ccard.dragging { opacity: 0.4; cursor: grabbing; transform: scale(0.97); }
+
+/* Status variants */
+.ccard.s-urgent {
+  border-color: #ffcdd2;
+  border-right-color: #e53935;
+  background: #fff8f8;
+  box-shadow: 0 1px 5px rgba(229,57,53,0.13);
+}
+.ccard.s-delivered {
+  border-color: #c8e6c9;
+  border-right-color: #43a047;
+  background: #f8fff9;
+  box-shadow: 0 1px 5px rgba(67,160,71,0.13);
+}
+
+.route-num {
+  position: absolute; top: -6px; right: -6px;
+  background: #3949ab; color: white;
+  font-size: 9px; font-weight: 800;
+  width: 18px; height: 18px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.ccard.s-urgent    .route-num { background: #e53935; }
+.ccard.s-delivered .route-num { background: #43a047; }
+
+.ccard-top {
+  display: flex; align-items: flex-start;
+  gap: 6px; margin-bottom: 4px;
+}
+.ccard-name { font-size: 13px; font-weight: 700; color: #1a1a2e; flex: 1; }
+
+.ccard-del {
+  background: none; border: none; color: #ddd;
+  cursor: pointer; font-size: 13px; line-height: 1;
+  padding: 2px 4px; border-radius: 4px; flex-shrink: 0;
+  transition: all 0.15s;
+}
+.ccard-del:hover { color: #e53935; background: rgba(229,57,53,0.1); }
+
+.ccard-row {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; color: #777; margin-top: 2px;
+}
+.ccard-row .ico { font-size: 10px; flex-shrink: 0; }
+
+.ccard-balance { font-size: 12px; font-weight: 800; color: #c62828; margin-top: 4px; }
+
+/* Status buttons */
+.ccard-status {
+  display: flex; gap: 5px; margin-top: 7px;
+  border-top: 1px solid rgba(0,0,0,0.06);
+  padding-top: 6px;
+}
+.sbtn {
+  flex: 1; padding: 4px 0; border: 1px solid #ddd;
+  border-radius: 5px; font-size: 10px; font-weight: 700;
+  cursor: pointer; background: #f7f7f7; color: #888;
+  transition: all 0.15s; font-family: inherit;
+  letter-spacing: 0.2px;
+}
+.sbtn:hover { filter: brightness(0.95); }
+
+/* Urgent button */
+.sbtn.sbtn-urgent         { border-color: #ffcdd2; color: #e53935; background: #fff5f5; }
+.sbtn.sbtn-urgent.active  { background: #e53935; color: white; border-color: #e53935; }
+
+/* Delivered button */
+.sbtn.sbtn-delivered         { border-color: #c8e6c9; color: #43a047; background: #f5fff5; }
+.sbtn.sbtn-delivered.active  { background: #43a047; color: white; border-color: #43a047; }
+
+/* Delivered card — dim the urgent button */
+.ccard.s-delivered .sbtn-urgent { opacity: 0.35; pointer-events: none; }
+
+/* ======= MODALS base ======= */
+.overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(10,20,60,0.5); z-index: 9000;
+  align-items: center; justify-content: center;
+  backdrop-filter: blur(3px);
+}
+.overlay.open { display: flex; }
+
+.modal {
+  background: white; border-radius: 20px;
+  padding: 30px 28px 24px; width: 440px;
+  max-width: 95vw;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.3);
+  animation: popIn 0.22s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.92) translateY(-10px); }
+  to   { opacity: 1; transform: none; }
+}
+.modal h2 { color: #1a237e; font-size: 20px; margin-bottom: 22px; font-weight: 800; }
+
+.fg { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+.fg label {
+  font-size: 11px; font-weight: 700; color: #666;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.fg input, .fg textarea {
+  padding: 11px 14px; border: 1.5px solid #e0e4f0;
+  border-radius: 10px; font-size: 14px; text-align: right;
+  font-family: inherit; color: #1a1a2e;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  background: #fafbff;
+}
+.fg input:focus, .fg textarea:focus {
+  outline: none; border-color: #3949ab;
+  box-shadow: 0 0 0 3px rgba(57,73,171,0.1);
+  background: white;
+}
+.fg textarea {
+  resize: vertical; min-height: 110px;
+  text-align: left; direction: ltr; font-size: 12px;
+  font-family: 'Courier New', monospace;
+}
+.modal-actions { display: flex; gap: 10px; margin-top: 6px; }
+.modal-actions .btn { flex: 1; padding: 13px; font-size: 14px; border-radius: 10px; }
+.btn-save   { background: #1a237e; color: white; }
+.btn-save:hover { background: #283593; }
+.btn-cancel { background: #f0f2f8; color: #666; }
+.btn-cancel:hover { background: #e0e4f0; }
+.btn-danger { background: #e53935; color: white; }
+.btn-danger:hover { background: #c62828; }
+
+/* Firebase modal extras */
+.fb-instructions {
+  background: #f3f4fb; border-radius: 10px;
+  padding: 14px; margin-bottom: 16px; font-size: 12px;
+  color: #444; line-height: 1.8;
+}
+.fb-instructions a { color: #3949ab; }
+.fb-instructions code {
+  background: #e8eaf6; padding: 2px 6px;
+  border-radius: 4px; font-size: 11px;
+}
+.fb-note {
+  font-size: 11px; color: #999; margin-top: 10px;
+  padding: 8px 12px; background: #fff8e1;
+  border-radius: 8px; border-right: 3px solid #ffa726;
+}
+
+/* ======= SCROLLBAR ======= */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #aaa; }
+
+/* ======= PRINT ======= */
+@media print {
+  .sidebar, .btn-add, .btn-nav, .btn-print,
+  .pool-section, .ccard-del, .ccard-status,
+  .route-num { display: none !important; }
+  body { overflow: visible; }
+  .app { display: block; height: auto; }
+  .main { padding: 0; overflow: visible; }
+  .grid { display: grid; grid-template-columns: repeat(6,1fr); gap: 6px; overflow: visible; }
+  .day-col { break-inside: avoid; }
+  .ccard { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ======= SIDEBAR ======= -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h1>🚚 מערכת הספקות</h1>
+      <p>ניהול מסלולי חלוקה לנהגים</p>
+    </div>
+
+    <!-- Firebase status -->
+    <div class="fb-status-bar" onclick="openFbModal()" title="הגדרות Firebase">
+      <div class="fb-dot" id="fb-dot"></div>
+      <span class="fb-status-text" id="fb-status-text">לא מחובר ל-Firebase</span>
+      <span class="fb-settings-icon">⚙️</span>
+    </div>
+
+    <!-- Add driver -->
+    <div class="sidebar-section">
+      <div class="lbl">הוספת נהג חדש</div>
+      <div class="add-row">
+        <input type="text" id="driver-input" placeholder="שם הנהג..."
+               onkeydown="if(event.key==='Enter') addDriver()" autocomplete="off" />
+        <button class="add-btn" onclick="addDriver()" title="הוסף נהג">+</button>
+      </div>
+    </div>
+
+    <!-- Driver list -->
+    <div class="drivers-wrap">
+      <div class="lbl">נהגים</div>
+      <div id="driver-list"></div>
+    </div>
+  </aside>
+
+  <!-- ======= MAIN ======= -->
+  <main class="main">
+    <div class="empty-state" id="empty-state">
+      <div class="big-ico">🚚</div>
+      <div class="msg">בחר נהג כדי להתחיל</div>
+      <div class="hint">צור נהג חדש בעמודה הימנית ולחץ עליו</div>
+    </div>
+
+    <div id="driver-view" class="hidden">
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <button class="btn btn-nav" onclick="shiftWeek(-1)">&#8249; אחורה</button>
+        <span class="week-lbl" id="week-lbl"></span>
+        <button class="btn btn-nav" onclick="shiftWeek(1)">קדימה &#8250;</button>
+        <span class="drv-badge" id="drv-badge"></span>
+        <button class="btn btn-add" onclick="openCustomerModal()">+ לקוח חדש</button>
+        <button class="btn btn-print" onclick="window.print()">🖨 הדפס</button>
+      </div>
+
+      <!-- Legend -->
+      <div style="display:flex;gap:10px;align-items:center;font-size:11px;color:#777;padding:0 4px;flex-shrink:0">
+        <span style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ff9800"></span> לא סופק</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#e53935"></span> דחוף</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#43a047"></span> סופק</span>
+      </div>
+
+      <!-- Unassigned pool -->
+      <div class="pool-section">
+        <div class="pool-header">
+          <span class="pool-title">ממתינים לשיבוץ</span>
+          <span class="pool-badge" id="pool-badge"></span>
+        </div>
+        <div class="pool-zone" id="pool-zone"
+             ondragover="dzOver(event,this)"
+             ondragleave="dzLeave(event,this)"
+             ondrop="dzDrop(event,null,null)">
+          <span class="pool-hint" id="pool-hint">גרור לקוח לכאן להסרת שיבוץ</span>
+        </div>
+      </div>
+
+      <!-- Weekly grid -->
+      <div class="grid" id="grid"></div>
+    </div>
+  </main>
+</div>
+
+<!-- ======= CUSTOMER MODAL ======= -->
+<div class="overlay" id="cust-overlay">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h2>➕ לקוח חדש</h2>
+    <form id="cust-form" onsubmit="submitCustomer(event)">
+      <div class="fg">
+        <label>שם לקוח *</label>
+        <input id="f-name"    type="text"   required placeholder="שם מלא..." autocomplete="off" />
+      </div>
+      <div class="fg">
+        <label>מספר הזמנה *</label>
+        <input id="f-order"   type="text"   required placeholder="מספר הזמנה..." autocomplete="off" />
+      </div>
+      <div class="fg">
+        <label>טלפון</label>
+        <input id="f-phone"   type="tel"    placeholder="050-0000000..." autocomplete="off" />
+      </div>
+      <div class="fg">
+        <label>יתרה לתשלום (₪)</label>
+        <input id="f-balance" type="number" placeholder="0" step="0.01" min="0" autocomplete="off" />
+      </div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-save">שמור לקוח</button>
+        <button type="button" class="btn btn-cancel" onclick="closeCustomerModal()">ביטול</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ======= FIREBASE SETTINGS MODAL ======= -->
+<div class="overlay" id="fb-overlay">
+  <div class="modal" onclick="event.stopPropagation()" style="width:520px">
+    <h2>🔥 חיבור ל-Firebase</h2>
+
+    <div class="fb-instructions">
+      <strong>שלבים לחיבור חינמי:</strong><br>
+      1. לך ל-<a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a><br>
+      2. צור פרוייקט חדש → הוסף אפליקציה Web (<code>&lt;/&gt;</code>)<br>
+      3. העתק את אובייקט <code>firebaseConfig</code><br>
+      4. הדבק אותו כאן (JSON בלבד, ללא <code>const firebaseConfig =</code>)
+    </div>
+
+    <div class="fg">
+      <label>Firebase Config (JSON)</label>
+      <textarea id="fb-config-input" placeholder='{
+  "apiKey": "...",
+  "authDomain": "...",
+  "projectId": "...",
+  "storageBucket": "...",
+  "messagingSenderId": "...",
+  "appId": "..."
+}'></textarea>
+    </div>
+
+    <div class="fb-note">
+      ⚠️ חשוב: בממשק Firebase → Firestore Database → Rules, שנה ל:<br>
+      <code>allow read, write: if true;</code> (לשימוש פרטי בלבד)
+    </div>
+
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-save" onclick="saveFbConfig()">התחבר</button>
+      <button class="btn btn-danger" onclick="clearFbConfig()">נתק Firebase</button>
+      <button class="btn btn-cancel" onclick="closeFbModal()">סגור</button>
+    </div>
+
+    <p id="fb-error" style="color:#e53935;font-size:12px;margin-top:10px;display:none"></p>
+  </div>
+</div>
+
+<script>
+// ==========================================
+//  CONSTANTS
+// ==========================================
+const DAYS   = ['ראשון','שני','שלישי','רביעי','חמישי','שישי'];
+const STORE  = 'deliverySys_v4';
+const FB_KEY = 'deliverySys_fbConfig';
+
+// Firebase config מוטמע — יתחבר אוטומטית
+const EMBEDDED_FB_CONFIG = {
+  apiKey:            "AIzaSyBx4vROiRpbeNIxfjZm0eCgaAcnfoAepjE",
+  authDomain:        "drivers-route-26eda.firebaseapp.com",
+  projectId:         "drivers-route-26eda",
+  storageBucket:     "drivers-route-26eda.firebasestorage.app",
+  messagingSenderId: "856521026038",
+  appId:             "1:856521026038:web:fc2444a8506f1e5377bfd7"
+};
+
+// ==========================================
+//  STATE
+// ==========================================
+let S = {
+  drivers:   [],
+  customers: [],
+  selDriver: null,
+  weekStart: sundayOf(new Date())
+};
+
+let db      = null;
+let fbReady = false;
+let unsubs  = [];      // Firestore unsubscribe functions
+let dragId  = null;
+
+// ==========================================
+//  UTILS
+// ==========================================
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+
+function sundayOf(d) {
+  const r = new Date(d);
+  r.setDate(r.getDate() - r.getDay());
+  r.setHours(0,0,0,0);
+  return r;
+}
+function weekKey(d) { return d.toISOString().slice(0,10); }
+function dayDate(i) { const d=new Date(S.weekStart); d.setDate(d.getDate()+i); return d; }
+function fmt(d)     { return d.getDate()+'/'+(d.getMonth()+1); }
+function isToday(d) {
+  const t=new Date();
+  return d.getDate()===t.getDate() && d.getMonth()===t.getMonth() && d.getFullYear()===t.getFullYear();
+}
+function weekLabel() {
+  return `שבוע ${fmt(S.weekStart)} – ${fmt(dayDate(5))}`;
+}
+function moneyFmt(n) {
+  return (parseFloat(n)||0).toLocaleString('he-IL',{minimumFractionDigits:0,maximumFractionDigits:2});
+}
+function esc(s) {
+  return String(s||'')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ==========================================
+//  LOCAL STORAGE
+// ==========================================
+function saveLocal() {
+  localStorage.setItem(STORE, JSON.stringify({
+    drivers:   S.drivers,
+    customers: S.customers,
+    selDriver: S.selDriver,
+    weekStart: S.weekStart.toISOString()
+  }));
+}
+
+function loadLocal() {
+  try {
+    const raw = localStorage.getItem(STORE);
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    S.drivers   = d.drivers   || [];
+    S.customers = d.customers || [];
+    S.selDriver = d.selDriver || null;
+    S.weekStart = d.weekStart ? new Date(d.weekStart) : sundayOf(new Date());
+  } catch(e) {}
+}
+
+function saveUiState() {
+  // Always save UI-only state locally
+  try {
+    const cur = JSON.parse(localStorage.getItem(STORE)||'{}');
+    cur.selDriver = S.selDriver;
+    cur.weekStart = S.weekStart.toISOString();
+    localStorage.setItem(STORE, JSON.stringify(cur));
+  } catch(e) {}
+}
+
+// ==========================================
+//  FIREBASE SETUP
+// ==========================================
+function setFbStatus(state, text) {
+  const dot  = document.getElementById('fb-dot');
+  const txt  = document.getElementById('fb-status-text');
+  dot.className = 'fb-dot ' + state;
+  txt.textContent = text;
+}
+
+function getFbConfig() {
+  try { return JSON.parse(localStorage.getItem(FB_KEY)); }
+  catch(e) { return null; }
+}
+
+function initFirebase(config) {
+  try {
+    // Stop existing listeners
+    unsubs.forEach(u => u());
+    unsubs = [];
+
+    // Init app (avoid duplicate)
+    let app;
+    try {
+      app = firebase.app();
+      // If config changed, we can't re-init without page reload
+    } catch(e) {
+      app = firebase.initializeApp(config);
+    }
+
+    db = firebase.firestore();
+    setFbStatus('connecting', 'מתחבר...');
+
+    // Test connection with a write
+    db.collection('_ping').doc('test').set({t: Date.now()})
+      .then(() => {
+        setFbStatus('connected', 'מחובר ל-Firebase ☁️');
+        fbReady = true;
+        startListeners();
+      })
+      .catch(err => {
+        console.error('Firestore error:', err);
+        setFbStatus('error', 'שגיאת חיבור');
+        fbReady = false;
+        db = null;
+      });
+  } catch(err) {
+    console.error('Firebase init error:', err);
+    setFbStatus('error', 'שגיאה: בדוק את ה-Config');
+  }
+}
+
+function startListeners() {
+  // Listen to drivers
+  const u1 = db.collection('drivers').onSnapshot(snap => {
+    S.drivers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    render();
+  }, err => console.error('drivers snapshot error', err));
+
+  // Listen to customers
+  const u2 = db.collection('customers').onSnapshot(snap => {
+    S.customers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    render();
+  }, err => console.error('customers snapshot error', err));
+
+  unsubs.push(u1, u2);
+}
+
+// ==========================================
+//  FIREBASE MODAL
+// ==========================================
+function openFbModal() {
+  const cfg = getFbConfig();
+  if (cfg) {
+    document.getElementById('fb-config-input').value = JSON.stringify(cfg, null, 2);
+  }
+  document.getElementById('fb-error').style.display = 'none';
+  document.getElementById('fb-overlay').classList.add('open');
+}
+
+function closeFbModal() {
+  document.getElementById('fb-overlay').classList.remove('open');
+}
+
+function saveFbConfig() {
+  const raw = document.getElementById('fb-config-input').value.trim();
+  const errEl = document.getElementById('fb-error');
+  errEl.style.display = 'none';
+
+  let config;
+  try {
+    config = JSON.parse(raw);
+  } catch(e) {
+    errEl.textContent = 'JSON לא תקין — בדוק שהדבקת נכון';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  if (!config.apiKey || !config.projectId) {
+    errEl.textContent = 'חסרים שדות (apiKey / projectId)';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  localStorage.setItem(FB_KEY, JSON.stringify(config));
+  closeFbModal();
+  initFirebase(config);
+}
+
+function clearFbConfig() {
+  if (!confirm('לנתק את Firebase? הנתונים ישמרו רק במכשיר זה.')) return;
+  localStorage.removeItem(FB_KEY);
+  unsubs.forEach(u => u());
+  unsubs = [];
+  db = null;
+  fbReady = false;
+  setFbStatus('', 'לא מחובר ל-Firebase');
+  closeFbModal();
+}
+
+// ==========================================
+//  CRUD — helpers
+// ==========================================
+function persist(action) {
+  // action: function that receives db (or null) and saves accordingly
+  if (db && fbReady) {
+    action(db);
+  } else {
+    saveLocal();
+  }
+}
+
+// ==========================================
+//  DRIVER ACTIONS
+// ==========================================
+function addDriver() {
+  const inp  = document.getElementById('driver-input');
+  const name = inp.value.trim();
+  if (!name) { inp.focus(); return; }
+  const driver = { id: uid(), name };
+  inp.value = '';
+
+  if (db && fbReady) {
+    db.collection('drivers').doc(driver.id).set({ name });
+    // listeners will update S.drivers and re-render
+  } else {
+    S.drivers.push(driver);
+    saveLocal();
+  }
+  S.selDriver = driver.id;
+  saveUiState();
+  render();
+}
+
+function selectDriver(id) {
+  S.selDriver = id;
+  saveUiState();
+  render();
+}
+
+function delDriver(id) {
+  if (!confirm('למחוק את הנהג ואת כל הלקוחות שלו?')) return;
+
+  if (db && fbReady) {
+    // Delete driver doc
+    db.collection('drivers').doc(id).delete();
+    // Delete all customers for this driver
+    db.collection('customers').where('driverId','==',id).get().then(snap => {
+      const batch = db.batch();
+      snap.forEach(doc => batch.delete(doc.ref));
+      return batch.commit();
+    });
+    // listeners will update state
+  } else {
+    S.drivers   = S.drivers.filter(d => d.id !== id);
+    S.customers = S.customers.filter(c => c.driverId !== id);
+    saveLocal();
+  }
+
+  if (S.selDriver === id) {
+    S.selDriver = S.drivers.filter(d => d.id !== id)[0]?.id || null;
+    saveUiState();
+  }
+  render();
+}
+
+// ==========================================
+//  WEEK NAVIGATION
+// ==========================================
+function shiftWeek(dir) {
+  S.weekStart = new Date(S.weekStart);
+  S.weekStart.setDate(S.weekStart.getDate() + dir*7);
+  saveUiState();
+  render();
+}
+
+// ==========================================
+//  CUSTOMER MODAL
+// ==========================================
+function openCustomerModal() {
+  document.getElementById('cust-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('f-name').focus(), 80);
+}
+
+function closeCustomerModal() {
+  document.getElementById('cust-overlay').classList.remove('open');
+  document.getElementById('cust-form').reset();
+}
+
+function submitCustomer(e) {
+  e.preventDefault();
+  const name     = document.getElementById('f-name').value.trim();
+  const orderNum = document.getElementById('f-order').value.trim();
+  const phone    = document.getElementById('f-phone').value.trim();
+  const balance  = parseFloat(document.getElementById('f-balance').value) || 0;
+  if (!name || !orderNum) return;
+
+  const c = {
+    id: uid(), name, orderNum, phone, balance,
+    driverId: S.selDriver,
+    weekKey: null, dayIdx: -1,
+    status: null   // null = לא סופק (orange)
+  };
+
+  if (db && fbReady) {
+    const {id, ...data} = c;
+    db.collection('customers').doc(id).set(data);
+  } else {
+    S.customers.push(c);
+    saveLocal();
+  }
+  closeCustomerModal();
+  if (!db) render();
+}
+
+function delCustomer(id) {
+  if (db && fbReady) {
+    db.collection('customers').doc(id).delete();
+  } else {
+    S.customers = S.customers.filter(c => c.id !== id);
+    saveLocal();
+    render();
+  }
+}
+
+// ==========================================
+//  STATUS
+// ==========================================
+function setStatus(id, newStatus) {
+  // Toggle: clicking active status turns it off (back to null = orange)
+  const c = S.customers.find(x => x.id === id);
+  if (!c) return;
+  const val = c.status === newStatus ? null : newStatus;
+
+  if (db && fbReady) {
+    db.collection('customers').doc(id).update({ status: val });
+  } else {
+    c.status = val;
+    saveLocal();
+    render();
+  }
+}
+
+// ==========================================
+//  DRAG & DROP
+// ==========================================
+function cardDragStart(e, id) {
+  dragId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  e.currentTarget.classList.add('dragging');
+}
+function cardDragEnd(e) { e.currentTarget.classList.remove('dragging'); }
+
+function dzOver(e, el)  { e.preventDefault(); e.dataTransfer.dropEffect='move'; el.classList.add('drag-over'); }
+function dzLeave(e, el) { el.classList.remove('drag-over'); }
+
+function dzDrop(e, wk, dayIdx) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!dragId) return;
+  const c = S.customers.find(x => x.id === dragId);
+  if (c) {
+    const newWk     = wk;
+    const newDayIdx = dayIdx === null ? -1 : dayIdx;
+
+    if (db && fbReady) {
+      db.collection('customers').doc(c.id).update({ weekKey: newWk, dayIdx: newDayIdx });
+    } else {
+      c.weekKey = newWk;
+      c.dayIdx  = newDayIdx;
+      saveLocal();
+      render();
+    }
+  }
+  dragId = null;
+}
+
+// ==========================================
+//  CARD BUILDER
+// ==========================================
+function makeCard(c, routeNum) {
+  const div = document.createElement('div');
+
+  const statusClass = c.status === 'urgent'    ? 's-urgent' :
+                      c.status === 'delivered' ? 's-delivered' : '';
+  div.className = `ccard ${statusClass}`.trim();
+  div.draggable = true;
+  div.dataset.id = c.id;
+
+  const rn = routeNum != null
+    ? `<span class="route-num">${routeNum}</span>` : '';
+
+  const balHtml = c.balance > 0
+    ? `<div class="ccard-balance">₪ ${moneyFmt(c.balance)}</div>` : '';
+
+  const phoneHtml = c.phone
+    ? `<div class="ccard-row"><span class="ico">📞</span>${esc(c.phone)}</div>` : '';
+
+  const urgentActive    = c.status === 'urgent'    ? 'active' : '';
+  const deliveredActive = c.status === 'delivered' ? 'active' : '';
+
+  div.innerHTML = `
+    ${rn}
+    <div class="ccard-top">
+      <div class="ccard-name">${esc(c.name)}</div>
+      <button class="ccard-del" title="מחק">✕</button>
+    </div>
+    <div class="ccard-row"><span class="ico">📋</span>${esc(c.orderNum)}</div>
+    ${phoneHtml}
+    ${balHtml}
+    <div class="ccard-status">
+      <button class="sbtn sbtn-urgent ${urgentActive}"    data-action="urgent">🚨 דחוף</button>
+      <button class="sbtn sbtn-delivered ${deliveredActive}" data-action="delivered">✓ סופק</button>
+    </div>
+  `;
+
+  div.querySelector('.ccard-del').onclick = ev => {
+    ev.stopPropagation();
+    delCustomer(c.id);
+  };
+  div.querySelectorAll('.sbtn').forEach(btn => {
+    btn.onclick = ev => {
+      ev.stopPropagation();
+      setStatus(c.id, btn.dataset.action);
+    };
+  });
+  div.addEventListener('dragstart', e => cardDragStart(e, c.id));
+  div.addEventListener('dragend',   cardDragEnd);
+  return div;
+}
+
+// ==========================================
+//  RENDER
+// ==========================================
+function renderDriverList() {
+  const list = document.getElementById('driver-list');
+  list.innerHTML = '';
+  if (!S.drivers.length) {
+    list.innerHTML = '<div class="no-drivers">לא נוצרו נהגים עדיין</div>';
+    return;
+  }
+  S.drivers.forEach(d => {
+    const item = document.createElement('div');
+    item.className = 'driver-item' + (S.selDriver === d.id ? ' active' : '');
+    item.innerHTML = `
+      <span class="ico">🧑‍✈️</span>
+      <span class="driver-name">${esc(d.name)}</span>
+      <button class="del-drv" title="מחק נהג">✕</button>
+    `;
+    item.onclick = () => selectDriver(d.id);
+    item.querySelector('.del-drv').onclick = ev => { ev.stopPropagation(); delDriver(d.id); };
+    list.appendChild(item);
+  });
+}
+
+function renderDriverView() {
+  const view  = document.getElementById('driver-view');
+  const empty = document.getElementById('empty-state');
+  const driver= S.drivers.find(d => d.id === S.selDriver);
+
+  if (!driver) {
+    empty.classList.remove('hidden');
+    view.classList.add('hidden');
+    return;
+  }
+
+  empty.classList.add('hidden');
+  view.classList.remove('hidden');
+
+  document.getElementById('week-lbl').textContent  = weekLabel();
+  document.getElementById('drv-badge').textContent = driver.name;
+
+  const wk   = weekKey(S.weekStart);
+  const mine = S.customers.filter(c => c.driverId === S.selDriver);
+
+  // Unassigned = dayIdx -1 or no week assigned
+  const unassigned = mine.filter(c => c.dayIdx === -1 || c.weekKey !== wk);
+
+  // Pool
+  const pool  = document.getElementById('pool-zone');
+  const hint  = document.getElementById('pool-hint');
+  const badge = document.getElementById('pool-badge');
+  Array.from(pool.querySelectorAll('.ccard')).forEach(el => el.remove());
+
+  if (unassigned.length === 0) {
+    hint.style.display  = 'block';
+    badge.style.display = 'none';
+  } else {
+    hint.style.display  = 'none';
+    badge.style.display = 'inline-block';
+    badge.textContent   = unassigned.length;
+    unassigned.forEach(c => pool.appendChild(makeCard(c, null)));
+  }
+
+  // Grid
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+
+  for (let i = 0; i < 6; i++) {
+    const date     = dayDate(i);
+    const assigned = mine.filter(c => c.weekKey === wk && c.dayIdx === i);
+    const total    = assigned.reduce((s,c) => s + (parseFloat(c.balance)||0), 0);
+    const delivered= assigned.filter(c => c.status === 'delivered').length;
+
+    const col = document.createElement('div');
+    col.className = 'day-col' + (isToday(date) ? ' today' : '');
+
+    const cntHtml   = assigned.length ? `<span class="day-cnt">${assigned.length} לקוחות${delivered ? ` · ${delivered} ✓` : ''}</span>` : '';
+    const totalHtml = total > 0       ? `<span class="day-total">₪ ${moneyFmt(total)}</span>` : '';
+
+    const curWk = weekKey(S.weekStart);
+
+    col.innerHTML = `
+      <div class="day-head">
+        <div class="day-nm">${DAYS[i]}</div>
+        <div class="day-dt">${fmt(date)}</div>
+        ${cntHtml}${totalHtml}
+      </div>
+      <div class="drop-zone"
+           ondragover="dzOver(event,this)"
+           ondragleave="dzLeave(event,this)"
+           ondrop="dzDrop(event,'${curWk}',${i})">
+      </div>
+    `;
+
+    const dz = col.querySelector('.drop-zone');
+    assigned.forEach((c, idx) => dz.appendChild(makeCard(c, idx + 1)));
+    grid.appendChild(col);
+  }
+}
+
+function render() {
+  renderDriverList();
+  renderDriverView();
+}
+
+// ==========================================
+//  EVENT HANDLERS
+// ==========================================
+document.getElementById('cust-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('cust-overlay')) closeCustomerModal();
+});
+document.getElementById('fb-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('fb-overlay')) closeFbModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeCustomerModal(); closeFbModal(); }
+});
+
+// ==========================================
+//  BOOT
+// ==========================================
+loadLocal();
+
+// התחבר ל-Firebase — קודם מנסה את ה-config המוטמע, אחר כך מה-localStorage
+const savedCfg = getFbConfig();
+initFirebase(savedCfg || EMBEDDED_FB_CONFIG);
+
+render();
+</script>
+</body>
+</html>

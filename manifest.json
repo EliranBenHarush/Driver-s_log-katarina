@@ -1,0 +1,19 @@
+{
+  "name": "מערכת הספקות לנהגים",
+  "short_name": "הספקות",
+  "description": "ניהול מסלולי חלוקה לנהגים",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef2f7",
+  "theme_color": "#1a237e",
+  "dir": "rtl",
+  "lang": "he",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
